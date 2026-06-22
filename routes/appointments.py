@@ -88,6 +88,7 @@ def extract_vapi_arguments(payload: dict) -> dict:
 async def book_appointment(request: Request):
     try:
         body = await request.json()
+        print("RAW BODY FROM VAPI:", body)
         
         # Handle both direct format and Vapi nested format
         # Direct: { patient_name, doctor_name, ... }
