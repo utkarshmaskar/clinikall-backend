@@ -85,26 +85,45 @@ def extract_vapi_arguments(payload: dict) -> dict:
 
 
 @router.post("/book-appointment")
-async def book_appointment(appointment: Appointment):
+async def book_appointment(request: Request):
     try:
-        # Support both Pydantic V1 and V2 dict/dump formats
-        try:
-            appointment_data = appointment.model_dump()
-        except AttributeError:
-            appointment_data = appointment.dict()
+        body = await request.json()
+        
+        # Handle both direct format and Vapi nested format
+        # Direct: { patient_name, doctor_name, ... }
+        # Vapi may send: { message: { toolCalls: [...] } }
+        
+        # Try to extract from nested Vapi format first
+        extracted = extract_vapi_arguments(body)
+        
+        # If not found, try direct format
+        if not all(k in extracted for k in ["patient_name", "doctor_name", "appointment_time"]):
+            extracted = {
+                "patient_name": body.get("patient_name"),
+                "doctor_name": body.get("doctor_name"),
+                "appointment_time": body.get("appointment_time"),
+                "phone_number": body.get("phone_number", "not provided")
+            }
+
+        # Validate we have minimum required fields
+        if not extracted.get("patient_name") or not extracted.get("doctor_name"):
+            raise HTTPException(status_code=422, detail="Missing required fields")
 
         # Insert to Supabase
-        db_result = await insert_appointment(appointment_data)
-        
-        # Trigger Twilio WhatsApp notification
+        db_result = await insert_appointment(extracted)
+
+        # Send WhatsApp
         send_whatsapp_confirmation(
-            to=appointment.phone_number,
-            patient=appointment.patient_name,
-            doctor=appointment.doctor_name,
-            time=appointment.appointment_time
+            to=extracted.get("phone_number", "not provided"),
+            patient=extracted["patient_name"],
+            doctor=extracted["doctor_name"],
+            time=extracted.get("appointment_time", "TBD")
         )
-        
-        return { "success": True, "message": "Appointment booked", "data": db_result }
+
+        return {"success": True, "message": "Appointment booked", "data": db_result}
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Booking failed: {str(e)}")
 
