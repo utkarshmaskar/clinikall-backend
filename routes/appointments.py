@@ -87,12 +87,14 @@ def extract_vapi_arguments(payload: dict) -> dict:
 @router.post("/book-appointment")
 async def book_appointment(request: Request):
     try:
-        body = await request.json()
-        print("RAW BODY FROM VAPI:", body)
+        raw = await request.body()
+        print("RAW BYTES:", raw)
         
-        # Handle both direct format and Vapi nested format
-        # Direct: { patient_name, doctor_name, ... }
-        # Vapi may send: { message: { toolCalls: [...] } }
+        if not raw:
+            raise HTTPException(status_code=422, detail="Empty request body")
+        
+        body = json.loads(raw)
+        print("RAW BODY FROM VAPI:", body)
         
         # Try to extract from nested Vapi format first
         extracted = extract_vapi_arguments(body)
@@ -106,14 +108,11 @@ async def book_appointment(request: Request):
                 "phone_number": body.get("phone_number", "not provided")
             }
 
-        # Validate we have minimum required fields
         if not extracted.get("patient_name") or not extracted.get("doctor_name"):
-            raise HTTPException(status_code=422, detail="Missing required fields")
+            raise HTTPException(status_code=422, detail=f"Missing required fields. Got: {body}")
 
-        # Insert to Supabase
         db_result = await insert_appointment(extracted)
 
-        # Send WhatsApp
         send_whatsapp_confirmation(
             to=extracted.get("phone_number", "not provided"),
             patient=extracted["patient_name"],
@@ -127,7 +126,6 @@ async def book_appointment(request: Request):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Booking failed: {str(e)}")
-
 
 @router.get("/appointments")
 async def fetch_appointments():
