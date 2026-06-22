@@ -169,3 +169,10 @@ async def vapi_webhook(request: Request):
         return { "result": "Appointment booked successfully", "data": db_result }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Vapi webhook booking failed: {str(e)}")
+
+
+@router.post("/debug-vapi")
+async def debug_vapi(request: Request):
+    body = await request.json()
+    print("VAPI SENT:", body)
+    return {"received": body}
